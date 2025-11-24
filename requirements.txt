@@ -1,8 +1,23 @@
-pydantic
+# Pydantic with email validator
+pydantic[email]<2
+
+# Core dependencies
 fastapi==0.101.0
 uvicorn[standard]==0.21.1
+
+# Database
 motor==3.7.1
 pymongo
+
+# Environment
 python-dotenv
+
+# Security / Auth
 python-jose
 passlib[bcrypt]
+
+# File uploads / forms
+python-multipart
+
+# Optional FastAPI docs
+fastapi_standalone_docs
