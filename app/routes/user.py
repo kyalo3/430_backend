@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import List
+from typing import Optional
 from app.models.user import User, UserCreate, create_user, get_user_by_username, get_user_by_email, get_all_users
 from app.models.donor import DonorCreate, create_donor
 from app.models.recipient import RecipientCreate, create_recipient
@@ -12,7 +13,7 @@ router = APIRouter()
 
 #registration endpoint
 @router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
-async def register_user(user: UserCreate, admin_code: str = Body(default=None)):
+async def register_user(user: UserCreate, admin_code: Optional[str] = Body(default=None)):
     # Restrict admin registration
     if user.role == "admin":
         # Use a secret code for admin registration

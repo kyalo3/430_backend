@@ -5,7 +5,7 @@ from app.models.recipient import Recipient, RecipientCreate, create_recipient, u
 from app.routes.auth import get_current_user
 from app.models.user import User
 from typing import List
-from app.models.recipient import get_recipient_by_id, get_recipient_by_user_id
+from app.models.recipient import get_recipient_by_id, get_recipient_by_user_id, get_recipients
 
 router = APIRouter()
 
@@ -50,16 +50,10 @@ async def get_recipient_endpoint(recipient_id: str):
         return recipient
     raise HTTPException(status_code=404, detail=f"Recipient with id {recipient_id} not found")
 
-@router.get("/recipients/", response_model=List[Recipient])
-async def get_recipients_endpoint(current_user: User = Depends(get_current_user)):
-    """gets all recipients
-    Args:
-        current_user: current logged_in user, obtained through dependency
-        injection
-    Returns:
-        list: a list containing dictionaries of all recipients
-    """
-    recipients = await get_recipient_by_user_id(current_user["id"])
+@router.get("/recipients/all", response_model=List[Recipient])
+async def get_recipients_endpoint():
+    """gets all recipients"""
+    recipients = await get_recipients()
     return recipients
 
 @router.put("/recipients/{recipient_id}", response_model=Recipient)

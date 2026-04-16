@@ -3,7 +3,7 @@ import os
 from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv()
-# MongoDB conncetion details
+# MongoDB connection details
 MONGO_DETAILS = os.getenv("MONGO_DETAILS")
 
 # Establish connection to MongoDB server

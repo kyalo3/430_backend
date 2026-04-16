@@ -89,3 +89,9 @@ async def get_donations_by_donor_id(donor_id: str, skip: int = 0, limit: int = 1
     """ function that gets a list of donations by donor id """
     donations = await donation_collection.find({"donor_id": donor_id}).skip(skip).limit(limit).to_list(length=limit)
     return [donation_helper(donation) for donation in donations]
+
+
+async def get_donations_by_recipient_id(recipient_id: str, skip: int = 0, limit: int = 10):
+    """ function that gets a list of donations by recipient id """
+    donations = await donation_collection.find({"recipient_id": recipient_id}).skip(skip).limit(limit).to_list(length=limit)
+    return [donation_helper(donation) for donation in donations]

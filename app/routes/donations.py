@@ -28,9 +28,10 @@ async def get_donations_fooditem_summary():
     return summary
 from fastapi import Depends, HTTPException, APIRouter
 from typing import List
-from app.models.donation import Donation, DonationBase, DonationCreate, create_donation, get_donations, get_donation_by_id, delete_donation, update_donation, get_donations_by_donor_id
+from app.models.donation import Donation, DonationBase, DonationCreate, create_donation, get_donations, get_donation_by_id, delete_donation, update_donation, get_donations_by_donor_id, get_donations_by_recipient_id
 from app.routes.auth import get_current_user
 from app.models.user import User
+from app.models.recipient import get_recipient_by_user_id
 
 router = APIRouter()
 
@@ -110,6 +111,29 @@ async def get_donations_by_donor(donor_id: str, skip: int = 0, limit: int = 10):
     donations = await get_donations_by_donor_id(donor_id, skip=skip, limit=limit)
     if not donations:
         raise HTTPException(status_code=404, detail="No donations found for this donor")
+    return donations
+
+
+@router.get("/recipients/{recipient_id}/donations/", response_model=List[Donation])
+async def get_donations_by_recipient(recipient_id: str, skip: int = 0, limit: int = 10):
+    donations = await get_donations_by_recipient_id(recipient_id, skip=skip, limit=limit)
+    if not donations:
+        raise HTTPException(status_code=404, detail="No donations found for this recipient")
+    return donations
+
+
+@router.get("/recipients/me/donations/", response_model=List[Donation])
+async def get_my_recipient_donations(current_user: User = Depends(get_current_user), skip: int = 0, limit: int = 10):
+    if current_user.get("role") != "recipient":
+        raise HTTPException(status_code=403, detail="Only recipients can access this endpoint")
+
+    recipient = await get_recipient_by_user_id(current_user["id"])
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient profile not found")
+
+    donations = await get_donations_by_recipient_id(recipient["id"], skip=skip, limit=limit)
+    if not donations:
+        raise HTTPException(status_code=404, detail="No donations found for this recipient")
     return donations
 
 
