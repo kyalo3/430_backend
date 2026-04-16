@@ -8,6 +8,8 @@ from app.models.donor import DonorCreate, create_donor
 from app.models.recipient import RecipientCreate, create_recipient
 from app.models.volunteer import VolunteerCreate, create_volunteer
 from app.routes.auth import authenticate_user, create_access_token, get_current_user
+from app.database import user_collection, donor_collection, recipient_collection, volunteer_collection
+from bson.objectid import ObjectId
 
 router = APIRouter()
 
@@ -36,9 +38,43 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 # GET all users endpoint for dashboard
 @router.get("/users/", response_model=List[User])
-async def get_users():
+async def get_users(current_user: User = Depends(get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view all users")
     users = await get_all_users()
     return users
+
+
+@router.delete("/users/{user_id}", response_model=dict)
+async def delete_user(user_id: str, current_user: User = Depends(get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can delete users")
+
+    if current_user.get("id") == user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+
+    try:
+        object_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+
+    user_doc = await user_collection.find_one({"_id": object_id})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    role = user_doc.get("role")
+    if role == "donor":
+        await donor_collection.delete_many({"user_id": user_id})
+    elif role == "recipient":
+        await recipient_collection.delete_many({"user_id": user_id})
+    elif role == "volunteer":
+        await volunteer_collection.delete_many({"user_id": user_id})
+
+    delete_result = await user_collection.delete_one({"_id": object_id})
+    if delete_result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {"message": "User deleted successfully"}
 
 
 import logging
