@@ -51,15 +51,25 @@ async def list_donations(
     skip: int = 0,
     limit: int = 20,
     status_filter: Optional[str] = None,
+    mine: bool = False,
     current_user: dict = Depends(get_current_user),
 ):
     limit = min(limit, 100)
     query = {}
     role = current_user.get("role")
-    if status_filter:
+    uid = str(current_user.get("id"))
+    if mine:
+        if role == "donor":
+            query["donor_id"] = uid
+        elif role == "recipient":
+            query["recipient_id"] = uid
+        elif role == "volunteer":
+            query["volunteer_id"] = uid
+        elif role != "admin":
+            raise HTTPException(403, "Forbidden")
+    elif status_filter:
         query["status"] = status_filter
     elif role in {"donor", "recipient", "volunteer"}:
-        # Public marketplace view: available only
         if role != "admin":
             query["status"] = "available"
     cursor = donation_collection.find(query).skip(skip).limit(limit)

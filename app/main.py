@@ -20,7 +20,7 @@ from app.routes import (
     user,
     volunteer,
 )
-from app.routes import auth_routes, health, impact, matching_routes, platform
+from app.routes import auth_routes, fulfilment, health, impact, matching_routes, notifications, platform
 
 
 @asynccontextmanager
@@ -92,6 +92,8 @@ def create_app() -> FastAPI:
         reviews.router,
         contact.router,
         donation_request.router,
+        fulfilment.router,
+        notifications.router,
     ):
         app.include_router(router, prefix=prefix)
 
@@ -109,6 +111,9 @@ def create_app() -> FastAPI:
         health.router,
         impact.router,
         matching_routes.router,
+        platform.router,
+        fulfilment.router,
+        notifications.router,
     ):
         app.include_router(router)
 

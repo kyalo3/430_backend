@@ -43,7 +43,7 @@ DONATION_ROLE_ACTIONS = {
     "donor": {"submitted", "cancelled", "recalled"},
     "admin": set().union(*DONATION_TRANSITIONS.values()) | set(DONATION_TRANSITIONS.keys()),
     "recipient": {"recipient_confirmed", "disputed"},
-    "volunteer": {"collected", "in_transit", "delivered", "failed", "disputed"},
+    "volunteer": {"pickup_scheduled", "collected", "in_transit", "delivered", "failed", "disputed"},
 }
 
 

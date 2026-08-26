@@ -7,6 +7,9 @@ class DonationRequestCreate(BaseModel):
     recipient_id: str
     item: str
     custom: Optional[str] = None
+    quantity: int = 1
+    urgency: str = "normal"
+    approx_location: Optional[str] = None
 
 
 class DonationRequestUpdate(BaseModel):

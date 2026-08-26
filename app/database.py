@@ -101,6 +101,9 @@ async def ensure_indexes() -> None:
     await donation_request_collection.create_index([("status", 1), ("recipient_id", 1)])
     await match_collection.create_index([("donation_id", 1), ("status", 1)])
     await fulfilment_collection.create_index("donation_id")
+    await fulfilment_collection.create_index("volunteer_id")
+    await donation_collection.create_index("volunteer_id")
+    await notification_collection.create_index([("user_id", 1), ("created_at", -1)])
     await audit_collection.create_index(
         [("entity_type", 1), ("entity_id", 1), ("created_at", -1)]
     )

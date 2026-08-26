@@ -58,5 +58,17 @@ async def my_impact(current_user: dict = Depends(get_current_user)):
 
 @router.get("/impact/admin")
 async def admin_impact(current_user: dict = Depends(require_roles("admin"))):
-    rows = [r async for r in impact_collection.find({"verified": True})]
-    return {"count": len(rows), "items": rows}
+    items = []
+    async for row in impact_collection.find({"verified": True}):
+        items.append(
+            {
+                "id": str(row.get("_id")),
+                "donation_id": row.get("donation_id"),
+                "category": row.get("category"),
+                "quantity": row.get("quantity"),
+                "unit": row.get("unit"),
+                "verified": row.get("verified"),
+                "completed_at": row.get("completed_at"),
+            }
+        )
+    return {"count": len(items), "items": items}

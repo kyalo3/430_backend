@@ -3,8 +3,15 @@ async def get_all_users():
     from app.database import db
     users = []
     async for user in db["users"].find():
-        user["id"] = str(user["_id"])
-        users.append(User(**user))
+        users.append(
+            User(
+                id=str(user["_id"]),
+                username=user.get("username", ""),
+                email=user.get("email") or "unknown@local",
+                role=user.get("role", ""),
+                status=user.get("status", "active"),
+            )
+        )
     return users
 from pydantic import BaseModel, EmailStr
 from app.utils import get_password_hash, verify_password
@@ -37,6 +44,7 @@ class User(UserBase):
     """ class to represent a User """
     id: str
     email: EmailStr
+    status: str = "active"
 
     class Config:
         """ pydantic configuration for user """
@@ -52,7 +60,8 @@ def user_helper(user) -> dict:
         "username": user["username"],
         "email": user.get("email", ""),
         "password": user["password"],
-        "role": user.get("role", "")
+        "role": user.get("role", ""),
+        "status": user.get("status", "active"),
     }
 
 

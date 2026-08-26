@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from app.core.audit import write_audit
 from app.core.lifecycle import DONATION_ROLE_ACTIONS, DONATION_TRANSITIONS, InvalidTransition, assert_transition
 from app.database import donation_collection, impact_collection, match_collection
+from app.services.notifications import notify
 
 
 def _now() -> str:
@@ -36,6 +37,7 @@ def donation_public(doc: dict) -> dict:
         "approx_location": doc.get("approx_location"),
         "handling_notes": doc.get("handling_notes"),
         "match_reasons": doc.get("match_reasons", []),
+        "volunteer_id": doc.get("volunteer_id") or "",
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at"),
         "version": doc.get("version", 1),
@@ -134,6 +136,13 @@ async def transition_donation(
 
     if target == "recipient_confirmed":
         await _ensure_impact(result)
+        await notify(
+            user_id=str(result.get("donor_id") or actor.get("id")),
+            title="Receipt confirmed",
+            body="Verified impact was recorded for a completed handover.",
+            event="donation.recipient_confirmed",
+            entity_id=donation_id,
+        )
 
     return donation_public(result)
 
@@ -206,4 +215,13 @@ async def claim_donation_atomic(donation_id: str, recipient_user_id: str, reason
         entity_id=donation_id,
         metadata={"reasons": reasons},
     )
+    donor_id = result.get("donor_id")
+    if donor_id:
+        await notify(
+            user_id=str(donor_id),
+            title="Listing reserved",
+            body="A recipient claimed your available listing. A volunteer can now complete handover.",
+            event="donation.claimed",
+            entity_id=donation_id,
+        )
     return donation_public(result)
