@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 from bson.objectid import ObjectId
 
+from pymongo.errors import DuplicateKeyError
+
 from app.core.config import get_settings
 from app.database import notification_collection
 
@@ -57,7 +59,13 @@ async def notify(
         "read": False,
         "created_at": _now(),
     }
-    result = await notification_collection.insert_one(doc)
+    try:
+        result = await notification_collection.insert_one(doc)
+    except DuplicateKeyError:
+        raced = await notification_collection.find_one(
+            {"user_id": user_id, "event": event, "entity_id": entity_id}
+        )
+        return str(raced["_id"]) if raced else ""
     if email:
         _adapter.send_email(email, title, body)
     return str(result.inserted_id)

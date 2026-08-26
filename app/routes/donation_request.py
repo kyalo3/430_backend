@@ -67,7 +67,7 @@ async def list_donation_requests(current_user: dict = Depends(get_current_user))
     if role == "recipient":
         recipient = await get_recipient_by_user_id(current_user["id"])
         if not recipient:
-            raise HTTPException(status_code=404, detail="Recipient profile not found")
+            return []
         query = {"recipient_id": recipient["id"]}
     elif role not in {"admin"}:
         raise HTTPException(status_code=403, detail="Only recipients and admins can list needs")

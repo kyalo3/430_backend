@@ -20,7 +20,7 @@ class ProgressIn(BaseModel):
 
 @router.get("/fulfilments/eligible")
 async def eligible_tasks(current_user: dict = Depends(require_roles("volunteer", "admin"))):
-    return await fulfilment_service.list_eligible()
+    return await fulfilment_service.list_eligible(current_user)
 
 
 @router.get("/fulfilments/mine")

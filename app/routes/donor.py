@@ -4,6 +4,7 @@ from typing import List
 from app.models.donor import Donor, DonorCreate, DonorUpdate, create_donor, get_donor_by_id, get_donor_by_user_id, update_donor, delete_donor
 from app.routes.auth import get_current_user
 from app.models.user import User
+from app.services.profiles import ensure_role_profile
 
 router = APIRouter()
 
@@ -11,6 +12,8 @@ router = APIRouter()
 @router.get("/donors/", response_model=Donor)
 async def get_current_user_donor(current_user: User = Depends(get_current_user)):
     donor = await get_donor_by_user_id(current_user["id"])
+    if not donor:
+        donor = await ensure_role_profile(current_user)
     if not donor:
         raise HTTPException(status_code=404, detail="Donor profile not found")
     return donor

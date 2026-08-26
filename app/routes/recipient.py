@@ -13,6 +13,7 @@ from app.models.recipient import (
     get_recipients,
     update_recipient,
 )
+from app.services.profiles import ensure_role_profile
 
 router = APIRouter(tags=["recipients"])
 
@@ -20,6 +21,8 @@ router = APIRouter(tags=["recipients"])
 @router.get("/recipients/")
 async def get_current_user_recipient(current_user: dict = Depends(require_roles("recipient", "admin"))):
     recipient = await get_recipient_by_user_id(current_user["id"])
+    if not recipient:
+        recipient = await ensure_role_profile(current_user)
     if not recipient:
         raise HTTPException(status_code=404, detail="Recipient profile not found")
     return recipient

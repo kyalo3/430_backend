@@ -153,8 +153,11 @@ async def get_current_user(
     user = await get_user_by_username(username)
     if user is None:
         raise credentials_exception
+    if user.get("status") in {"anonymised", "pending_deletion"}:
+        raise credentials_exception
     if user.get("status") == "suspended":
         raise HTTPException(status_code=403, detail="Account suspended")
+    user.pop("password", None)
     return user
 
 

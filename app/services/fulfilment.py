@@ -53,12 +53,24 @@ def _serialise_fulfilment(row: dict) -> dict:
     }
 
 
-async def list_eligible() -> list[dict]:
+async def list_eligible(actor: dict | None = None) -> list[dict]:
+    area = ""
+    if actor and actor.get("role") == "volunteer":
+        from app.models.volunteer import get_volunteer_by_user_id
+
+        profile = await get_volunteer_by_user_id(str(actor.get("id")))
+        area = ((profile or {}).get("service_area") or "").strip().lower()
     rows = []
     async for doc in donation_collection.find(
         {"status": {"$in": list(ELIGIBLE)}, "$or": [{"volunteer_id": {"$exists": False}}, {"volunteer_id": None}, {"volunteer_id": ""}]}
-    ).limit(50):
+    ).limit(80):
+        if area:
+            loc = (doc.get("approx_location") or "").lower()
+            if loc and area not in loc and loc not in area:
+                continue
         rows.append(_volunteer_view(doc, assigned=False))
+        if len(rows) >= 50:
+            break
     return rows
 
 

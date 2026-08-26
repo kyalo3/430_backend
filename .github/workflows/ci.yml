@@ -19,6 +19,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
+      - name: Refuse hard-coded admin bootstrap
+        run: |
+          if test -f app/create_admin_user.py; then
+            echo "Hard-coded admin creator must not be present"
+            exit 1
+          fi
       - run: pytest -q
         env:
           APP_ENV: development

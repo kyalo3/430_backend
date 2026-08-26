@@ -182,13 +182,7 @@ async def test_volunteer_assignment_reveals_handover_after_accept(client):
     headers_r = {"Authorization": f"Bearer {await login(rec['username'])}"}
     claim = await client.post(f"/donations/{donation_id}/claim", headers=headers_r, json={"reasons": ["nearby"]})
     assert claim.status_code == 200, claim.text
-    for status in ("matched",):
-        r = await client.post(
-            f"/donations/{donation_id}/transition",
-            headers=headers_a,
-            json={"status": status, "reason": "ready for volunteer"},
-        )
-        assert r.status_code == 200, r.text
+    assert claim.json().get("status") == "matched"
 
     headers_v = {"Authorization": f"Bearer {await login(vol['username'])}"}
     eligible = await client.get("/fulfilments/eligible", headers=headers_v)

@@ -1,14 +1,23 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.core.config import get_settings
+from app.core.rate_limit import client_key, limiter
 from app.core.rbac import require_roles
 from app.core.security import get_current_user
 from app.database import donation_collection
 from app.models.donation import DonationBase, get_donation_by_id, get_donations_by_donor_id, get_donations_by_recipient_id
 from app.models.recipient import get_recipient_by_user_id
-from app.services.donations import claim_donation_atomic, create_donation_draft, donation_public, transition_donation
+from app.services.donations import (
+    claim_donation_atomic,
+    create_donation_draft,
+    donation_catalogue,
+    donation_public,
+    is_donation_party,
+    transition_donation,
+)
 
 router = APIRouter(tags=["donations"])
 
@@ -26,6 +35,7 @@ class DonationCreateIn(BaseModel):
     collection_window: Optional[str] = None
     approx_location: Optional[str] = None
     handling_notes: Optional[str] = None
+    organisation_id: Optional[str] = None
 
 
 class TransitionIn(BaseModel):
@@ -40,9 +50,18 @@ class ClaimIn(BaseModel):
 @router.post("/donations/")
 async def create_donation_endpoint(
     body: DonationCreateIn,
+    request: Request,
     current_user: dict = Depends(require_roles("donor", "admin")),
 ):
+    limiter.check(client_key(request, "write"), get_settings().rate_limit_write_per_minute)
     payload = body.dict()
+    org_id = payload.get("organisation_id") or None
+    if org_id:
+        from app.services.organisations import assert_member
+
+        await assert_member(str(current_user["id"]), org_id)
+    else:
+        payload.pop("organisation_id", None)
     return await create_donation_draft(payload, str(current_user["id"]))
 
 
@@ -73,27 +92,32 @@ async def list_donations(
         if role != "admin":
             query["status"] = "available"
     cursor = donation_collection.find(query).skip(skip).limit(limit)
-    return [donation_public(d) async for d in cursor]
+    rows = []
+    async for d in cursor:
+        if mine or role == "admin" or is_donation_party(d, current_user):
+            rows.append(donation_public(d))
+        else:
+            rows.append(donation_catalogue(d))
+    return rows
 
 
 @router.get("/donations/{donation_id}")
 async def get_donation(donation_id: str, current_user: dict = Depends(get_current_user)):
-    donation = await get_donation_by_id(donation_id)
-    if donation is None:
-        # try raw
-        from bson.objectid import ObjectId
+    from bson.objectid import ObjectId
 
-        try:
-            doc = await donation_collection.find_one({"_id": ObjectId(donation_id)})
-        except Exception:
-            doc = None
-        if not doc:
-            raise HTTPException(404, "Donation not found")
-        donation = donation_public(doc)
-    # Hide non-available donations from unrelated roles
+    try:
+        source = await donation_collection.find_one({"_id": ObjectId(donation_id)})
+    except Exception:
+        source = None
+    if not source:
+        raise HTTPException(404, "Donation not found")
     if current_user.get("role") not in {"admin", "donor", "volunteer", "recipient"}:
         raise HTTPException(403, "Forbidden")
-    return donation
+    if not is_donation_party(source, current_user):
+        if source.get("status") != "available":
+            raise HTTPException(404, "Donation not found")
+        return donation_catalogue(source)
+    return donation_public(source)
 
 
 @router.post("/donations/{donation_id}/transition")

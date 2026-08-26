@@ -56,6 +56,10 @@ def volunteer_helper(volunteer: Any) -> dict:
         "phone_number": volunteer.get("phone_number", ""),
         "gender": volunteer.get("gender", ""),
         "address": volunteer.get("address", ""),
+        "service_area": volunteer.get("service_area", ""),
+        "availability_notes": volunteer.get("availability_notes", ""),
+        "capacity": volunteer.get("capacity", 1),
+        "task_types": volunteer.get("task_types", []),
     }
 
 async def create_volunteer(volunteer: VolunteerCreate, user_id: str) -> dict:

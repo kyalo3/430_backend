@@ -25,7 +25,8 @@ from app.core.security import (
 )
 from app.database import refresh_token_collection, user_collection
 from app.models.user import UserCreate, create_user, get_user_by_email, get_user_by_username
-from app.routes.auth import authenticate_user
+from app.routes.auth import LOCKED, authenticate_user
+from app.services.profiles import ensure_role_profile
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 compat_router = APIRouter(tags=["auth-compat"])
@@ -65,6 +66,15 @@ async def register(request: Request):
         raise HTTPException(status_code=400, detail="Unable to register with the provided credentials")
     user = UserCreate(username=body.username, email=body.email, password=body.password, role=body.role)
     created = await create_user(user)
+    await ensure_role_profile(created)
+    if settings.verification_required:
+        from app.database import user_collection as users
+        from bson.objectid import ObjectId
+        from app.services.verification import VerificationAdapter
+
+        await users.update_one({"_id": ObjectId(created["id"])}, {"$set": {"email_verified": False}})
+        created["email_verified"] = False
+        VerificationAdapter().issue_code("email", body.email)
     await write_audit(
         actor_id=created.get("id"),
         actor_role=body.role,
@@ -103,10 +113,14 @@ async def _issue_session(response: Response, user: dict) -> dict:
 @compat_router.post("/token")
 async def login(response: Response, request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     settings = get_settings()
-    limiter.check(client_key(request, "auth"), settings.rate_limit_auth_per_minute)
+    limiter.check(client_key(request, f"auth:{form_data.username.lower()}"), settings.rate_limit_auth_per_minute)
     user = await authenticate_user(form_data.username, form_data.password)
+    if user is LOCKED:
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
+    if settings.verification_required and not user.get("email_verified", True):
+        raise HTTPException(status_code=403, detail="Email verification required")
     await write_audit(
         actor_id=str(user.get("id")),
         actor_role=user.get("role"),
@@ -176,4 +190,5 @@ async def auth_me(current_user: dict = Depends(get_current_user)):
         "email": current_user.get("email"),
         "role": current_user.get("role"),
         "status": current_user.get("status", "active"),
+        "email_verified": current_user.get("email_verified", True),
     }

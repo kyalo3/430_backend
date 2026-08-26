@@ -17,6 +17,26 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def donation_catalogue(doc: dict) -> dict:
+    """Browse/list view — no recipient identity, volunteer identity, or handling notes."""
+    public = donation_public(doc)
+    public["recipient_id"] = ""
+    public["volunteer_id"] = ""
+    public["handling_notes"] = None
+    return public
+
+
+def is_donation_party(doc: dict, user: dict) -> bool:
+    if user.get("role") == "admin":
+        return True
+    uid = str(user.get("id") or "")
+    return uid in {
+        str(doc.get("donor_id") or ""),
+        str(doc.get("recipient_id") or ""),
+        str(doc.get("volunteer_id") or ""),
+    }
+
+
 def donation_public(doc: dict) -> dict:
     return {
         "id": str(doc["_id"]),
@@ -38,6 +58,7 @@ def donation_public(doc: dict) -> dict:
         "handling_notes": doc.get("handling_notes"),
         "match_reasons": doc.get("match_reasons", []),
         "volunteer_id": doc.get("volunteer_id") or "",
+        "organisation_id": doc.get("organisation_id") or "",
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at"),
         "version": doc.get("version", 1),
@@ -224,4 +245,22 @@ async def claim_donation_atomic(donation_id: str, recipient_user_id: str, reason
             event="donation.claimed",
             entity_id=donation_id,
         )
-    return donation_public(result)
+    # A successful claim is the match — volunteers may accept handover without a second admin click.
+    matched = await donation_collection.find_one_and_update(
+        {"_id": oid, "status": "reserved"},
+        {
+            "$set": {"status": "matched", "updated_at": _now()},
+            "$inc": {"version": 1},
+            "$push": {
+                "history": {
+                    "status": "matched",
+                    "at": _now(),
+                    "by": recipient_user_id,
+                    "role": "recipient",
+                    "reason": "Claim confirmed as match",
+                }
+            },
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    return donation_public(matched or result)

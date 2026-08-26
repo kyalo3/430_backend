@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from typing import List
 
 from app.core.rbac import require_roles
 from app.core.security import get_current_user
+from app.database import volunteer_collection
 from app.models.volunteer import (
     VolunteerCreate,
     VolunteerUpdate,
@@ -11,16 +14,52 @@ from app.models.volunteer import (
     get_volunteer_by_user_id,
     update_volunteer,
 )
+from app.services.profiles import ensure_role_profile
 
 router = APIRouter(tags=["volunteers"])
+
+
+class VolunteerLogisticsIn(BaseModel):
+    service_area: str = ""
+    availability_notes: str = ""
+    capacity: int = Field(1, ge=1, le=50)
+    task_types: List[str] = []
 
 
 @router.get("/volunteers/")
 async def get_current_user_volunteer(current_user: dict = Depends(require_roles("volunteer", "admin"))):
     volunteer = await get_volunteer_by_user_id(current_user["id"])
     if not volunteer:
+        volunteer = await ensure_role_profile(current_user)
+    if not volunteer:
         raise HTTPException(status_code=404, detail="Volunteer profile not found")
     return volunteer
+
+
+@router.put("/volunteers/me/logistics")
+async def update_logistics(
+    body: VolunteerLogisticsIn,
+    current_user: dict = Depends(require_roles("volunteer")),
+):
+    volunteer = await get_volunteer_by_user_id(current_user["id"])
+    if not volunteer:
+        volunteer = await ensure_role_profile(current_user)
+    if not volunteer:
+        raise HTTPException(404, "Volunteer profile not found")
+    from bson.objectid import ObjectId
+
+    await volunteer_collection.update_one(
+        {"_id": ObjectId(volunteer["id"])},
+        {
+            "$set": {
+                "service_area": body.service_area.strip()[:120],
+                "availability_notes": body.availability_notes.strip()[:400],
+                "capacity": body.capacity,
+                "task_types": [t.strip() for t in body.task_types if t.strip()][:8],
+            }
+        },
+    )
+    return await get_volunteer_by_user_id(current_user["id"])
 
 
 @router.post("/volunteers/")

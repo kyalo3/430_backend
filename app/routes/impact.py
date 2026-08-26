@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from app.core.security import get_current_user
 from app.core.rbac import require_roles
 from app.database import impact_collection
+from app.services.operations import operations_snapshot
 
 router = APIRouter(tags=["impact"])
 
@@ -72,3 +73,8 @@ async def admin_impact(current_user: dict = Depends(require_roles("admin"))):
             }
         )
     return {"count": len(items), "items": items}
+
+
+@router.get("/impact/operations")
+async def operations(current_user: dict = Depends(require_roles("admin"))):
+    return await operations_snapshot()

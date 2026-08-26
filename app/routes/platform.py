@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from app.core.audit import write_audit
 from app.core.rbac import require_roles
 from app.core.security import get_current_user
-from app.database import consent_collection, user_collection
+from app.database import consent_collection
+from app.services.privacy import anonymise_account, export_user_data
 
 router = APIRouter(tags=["platform"])
 
@@ -15,6 +16,10 @@ router = APIRouter(tags=["platform"])
 class ConsentIn(BaseModel):
     purpose: str
     granted: bool
+
+
+class DeleteConfirmIn(BaseModel):
+    confirmation: str
 
 
 @router.get("/platform/privacy-notice")
@@ -33,12 +38,26 @@ async def privacy_notice():
             "Selling personal data",
             "Surveillance scoring of recipients",
         ],
+        "rights": [
+            "Export a copy of your account data",
+            "Request anonymisation of your account",
+            "Withdraw optional story or photograph consent",
+        ],
         "contact": "privacy@sustainashare.local",
     }
 
 
 @router.post("/platform/consent")
 async def record_consent(body: ConsentIn, current_user: dict = Depends(get_current_user)):
+    allowed = {
+        "impact_story",
+        "photograph",
+        "identity_publication",
+        "analytics",
+        "operational_updates",
+    }
+    if body.purpose not in allowed:
+        raise HTTPException(400, "Unknown consent purpose")
     doc = {
         "user_id": str(current_user["id"]),
         "purpose": body.purpose,
@@ -52,39 +71,25 @@ async def record_consent(body: ConsentIn, current_user: dict = Depends(get_curre
         action="consent.recorded",
         entity_type="user",
         entity_id=str(current_user["id"]),
-        metadata=doc,
+        metadata={"purpose": body.purpose, "granted": body.granted},
     )
     return {"ok": True}
 
 
 @router.get("/platform/me/export")
 async def export_my_data(current_user: dict = Depends(get_current_user)):
-    return {
-        "user": {
-            "id": current_user.get("id"),
-            "username": current_user.get("username"),
-            "email": current_user.get("email"),
-            "role": current_user.get("role"),
-        },
-        "note": "Extended export of profile collections can be expanded per role.",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return await export_user_data(current_user)
 
 
 @router.post("/platform/me/delete-request")
-async def delete_request(current_user: dict = Depends(get_current_user)):
-    await user_collection.update_one(
-        {"username": current_user["username"]},
-        {"$set": {"status": "pending_deletion", "deletion_requested_at": datetime.now(timezone.utc).isoformat()}},
+async def delete_request(body: DeleteConfirmIn, current_user: dict = Depends(get_current_user)):
+    if body.confirmation.strip().upper() != "DELETE":
+        raise HTTPException(400, "Type DELETE to confirm anonymisation")
+    return await anonymise_account(
+        current_user,
+        actor=current_user,
+        reason="Self-service account anonymisation",
     )
-    await write_audit(
-        actor_id=str(current_user["id"]),
-        actor_role=current_user.get("role"),
-        action="user.deletion_requested",
-        entity_type="user",
-        entity_id=str(current_user["id"]),
-    )
-    return {"message": "Deletion requested. An administrator will anonymise or remove account data per retention policy."}
 
 
 @router.get("/platform/audit")

@@ -10,6 +10,7 @@ async def get_all_users():
                 email=user.get("email") or "unknown@local",
                 role=user.get("role", ""),
                 status=user.get("status", "active"),
+                email_verified=user.get("email_verified", True),
             )
         )
     return users
@@ -45,6 +46,7 @@ class User(UserBase):
     id: str
     email: EmailStr
     status: str = "active"
+    email_verified: bool = True
 
     class Config:
         """ pydantic configuration for user """
@@ -62,6 +64,7 @@ def user_helper(user) -> dict:
         "password": user["password"],
         "role": user.get("role", ""),
         "status": user.get("status", "active"),
+        "email_verified": user.get("email_verified", True),
     }
 
 
@@ -74,6 +77,7 @@ async def create_user(user: UserCreate):
         'password': get_password_hash(user.password),
         'role': user.role,
         'status': 'active',
+        'email_verified': True,
     }
     new_user = await user_collection.insert_one(user_dict)
     created_user = await user_collection.find_one({"_id": new_user.inserted_id})

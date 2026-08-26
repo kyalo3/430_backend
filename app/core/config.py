@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     rate_limit_auth_per_minute: int = Field(20, env="RATE_LIMIT_AUTH_PER_MINUTE")
     enable_docs: bool = Field(True, env="ENABLE_DOCS")
     verification_required: bool = Field(False, env="VERIFICATION_REQUIRED")
+    rate_limit_write_per_minute: int = Field(40, env="RATE_LIMIT_WRITE_PER_MINUTE")
+    feature_webhooks: bool = Field(False, env="FEATURE_WEBHOOKS")
+    feature_object_storage: bool = Field(False, env="FEATURE_OBJECT_STORAGE")
 
     class Config:
         env_file = ".env"

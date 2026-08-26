@@ -65,6 +65,8 @@ impact_collection = _CollectionProxy("impact_records")
 consent_collection = _CollectionProxy("consents")
 notification_collection = _CollectionProxy("notifications")
 refresh_token_collection = _CollectionProxy("refresh_tokens")
+organisation_collection = _CollectionProxy("organisations")
+organisation_member_collection = _CollectionProxy("organisation_members")
 
 
 class _DbProxy:
@@ -104,8 +106,22 @@ async def ensure_indexes() -> None:
     await fulfilment_collection.create_index("volunteer_id")
     await donation_collection.create_index("volunteer_id")
     await notification_collection.create_index([("user_id", 1), ("created_at", -1)])
+    try:
+        await notification_collection.create_index(
+            [("user_id", 1), ("event", 1), ("entity_id", 1)],
+            unique=True,
+            name="notify_idempotent",
+        )
+    except Exception:
+        # Existing duplicates in a long-lived database must not block startup.
+        pass
+    await user_collection.create_index("status")
+    await consent_collection.create_index([("user_id", 1), ("purpose", 1), ("at", -1)])
     await audit_collection.create_index(
         [("entity_type", 1), ("entity_id", 1), ("created_at", -1)]
     )
     await impact_collection.create_index("donation_id", unique=True)
     await refresh_token_collection.create_index("jti", unique=True)
+    await organisation_collection.create_index("slug", unique=True)
+    await organisation_member_collection.create_index([("org_id", 1), ("user_id", 1)], unique=True)
+    await donation_collection.create_index("organisation_id")

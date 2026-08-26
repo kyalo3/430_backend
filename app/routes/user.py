@@ -14,7 +14,14 @@ router = APIRouter(tags=["users"])
 
 @router.get("/users/me", response_model=User)
 async def get_me(current_user: dict = Depends(get_current_user)):
-    return current_user
+    return {
+        "id": current_user.get("id"),
+        "username": current_user.get("username"),
+        "email": current_user.get("email") or "unknown@local",
+        "role": current_user.get("role"),
+        "status": current_user.get("status", "active"),
+        "email_verified": current_user.get("email_verified", True),
+    }
 
 
 @router.get("/users/", response_model=List[User])
@@ -84,6 +91,11 @@ async def restore_user(user_id: str, reason: str, current_user: dict = Depends(r
         oid = ObjectId(user_id)
     except Exception as exc:
         raise HTTPException(400, "Invalid user id") from exc
+    existing = await user_collection.find_one({"_id": oid})
+    if not existing:
+        raise HTTPException(404, "User not found")
+    if existing.get("status") == "anonymised":
+        raise HTTPException(400, "Anonymised accounts cannot be restored")
     result = await user_collection.update_one({"_id": oid}, {"$set": {"status": "active"}})
     if result.matched_count == 0:
         raise HTTPException(404, "User not found")
@@ -96,3 +108,20 @@ async def restore_user(user_id: str, reason: str, current_user: dict = Depends(r
         reason=reason,
     )
     return {"message": "User restored"}
+
+
+@router.post("/users/{user_id}/anonymise")
+async def anonymise_user(user_id: str, reason: str, current_user: dict = Depends(require_roles("admin"))):
+    if not reason or len(reason.strip()) < 5:
+        raise HTTPException(400, "Anonymisation requires a reason")
+    from app.models.user import user_helper
+    from app.services.privacy import anonymise_account
+
+    try:
+        oid = ObjectId(user_id)
+    except Exception as exc:
+        raise HTTPException(400, "Invalid user id") from exc
+    doc = await user_collection.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "User not found")
+    return await anonymise_account(user_helper(doc), actor=current_user, reason=reason)
