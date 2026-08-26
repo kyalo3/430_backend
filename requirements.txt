@@ -1,23 +1,13 @@
-# Pydantic with email validator
-pydantic[email]<2
-
-# Core dependencies
-fastapi==0.101.0
-uvicorn[standard]==0.21.1
-
-# Database
-motor==3.7.1
-pymongo
-
-# Environment
-python-dotenv
-
-# Security / Auth
-python-jose
-passlib[bcrypt]
-
-# File uploads / forms
-python-multipart
-
-# Optional FastAPI docs
-fastapi_standalone_docs
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+motor==3.6.0
+pymongo==4.9.2
+python-dotenv==1.0.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.17
+pydantic[email]==1.10.19
+email-validator==2.2.0
+httpx==0.28.1
+pytest==8.3.4
+pytest-asyncio==0.24.0

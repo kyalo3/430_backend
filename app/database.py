@@ -1,24 +1,108 @@
-from dotenv import load_dotenv
+"""MongoDB access — collections proxy until first use (avoids import-time SRV DNS hard-fail)."""
+from __future__ import annotations
+
 import os
+from typing import Any, Optional
+
+from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv()
-# MongoDB connection details
+
 MONGO_DETAILS = os.getenv("MONGO_DETAILS")
 
-# Establish connection to MongoDB server
-client = AsyncIOMotorClient(MONGO_DETAILS)
+_client: Optional[AsyncIOMotorClient] = None
+_db = None
+_bound = False
 
-# Initialize database
-database = client.food_donation
 
-# Initialize collections for storing data
-donor_collection = database.get_collection("donors")
-recipient_collection = database.get_collection("recipients")
-donation_collection = database.get_collection("donations")
-user_collection = database.get_collection("users")
-volunteer_collection = database.get_collection("volunteers")
-review_collection = database.get_collection("reviews")
-donation_request_collection = database.get_collection("donation_requests")
+def get_client() -> AsyncIOMotorClient:
+    global _client
+    if _client is None:
+        if not MONGO_DETAILS:
+            raise RuntimeError(
+                "MONGO_DETAILS is required. Copy .env.example to .env and set a MongoDB URI."
+            )
+        _client = AsyncIOMotorClient(
+            MONGO_DETAILS,
+            serverSelectionTimeoutMS=8000,
+            connectTimeoutMS=8000,
+        )
+    return _client
 
+
+def bind_collections() -> Any:
+    global _db, _bound
+    if _bound and _db is not None:
+        return _db
+    _db = get_client().food_donation
+    _bound = True
+    return _db
+
+
+class _CollectionProxy:
+    def __init__(self, name: str):
+        self._name = name
+
+    def _real(self):
+        return bind_collections().get_collection(self._name)
+
+    def __getattr__(self, item: str):
+        return getattr(self._real(), item)
+
+
+donor_collection = _CollectionProxy("donors")
+recipient_collection = _CollectionProxy("recipients")
+donation_collection = _CollectionProxy("donations")
+user_collection = _CollectionProxy("users")
+volunteer_collection = _CollectionProxy("volunteers")
+review_collection = _CollectionProxy("reviews")
+donation_request_collection = _CollectionProxy("donation_requests")
+audit_collection = _CollectionProxy("audit_events")
+match_collection = _CollectionProxy("matches")
+fulfilment_collection = _CollectionProxy("fulfilments")
+impact_collection = _CollectionProxy("impact_records")
+consent_collection = _CollectionProxy("consents")
+notification_collection = _CollectionProxy("notifications")
+refresh_token_collection = _CollectionProxy("refresh_tokens")
+
+
+class _DbProxy:
+    def __getattr__(self, item: str):
+        return getattr(bind_collections(), item)
+
+    def __getitem__(self, item: str):
+        return bind_collections()[item]
+
+
+database = _DbProxy()
 db = database
+
+
+# main.py uses `client`
+class _ClientProxy:
+    def __getattr__(self, item: str):
+        return getattr(get_client(), item)
+
+
+client = _ClientProxy()
+
+
+async def ensure_indexes() -> None:
+    bind_collections()
+    await user_collection.create_index("username", unique=True)
+    await user_collection.create_index("email", unique=True)
+    await donor_collection.create_index("user_id")
+    await recipient_collection.create_index("user_id")
+    await volunteer_collection.create_index("user_id")
+    await donation_collection.create_index([("status", 1), ("category", 1)])
+    await donation_collection.create_index("donor_id")
+    await donation_collection.create_index([("status", 1), ("updated_at", -1)])
+    await donation_request_collection.create_index([("status", 1), ("recipient_id", 1)])
+    await match_collection.create_index([("donation_id", 1), ("status", 1)])
+    await fulfilment_collection.create_index("donation_id")
+    await audit_collection.create_index(
+        [("entity_type", 1), ("entity_id", 1), ("created_at", -1)]
+    )
+    await impact_collection.create_index("donation_id", unique=True)
+    await refresh_token_collection.create_index("jti", unique=True)

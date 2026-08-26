@@ -1,88 +1,118 @@
-from fastapi import FastAPI
-from app.routes import donations, user, donor, recipient, reviews, volunteer, contact, donation_request
+"""Sustainashare API application factory."""
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi_standalone_docs import StandaloneDocs
-app = FastAPI(
-    title="Food Donation API",
-    description="API for managing food donations, donors, recipients, community volunteers and reviews",
-    version="1.0.0",
+from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+from app.core.config import get_settings
+from app.database import client, ensure_indexes
+from app.routes import (
+    contact,
+    donation_request,
+    donations,
+    donor,
+    recipient,
+    reviews,
+    user,
+    volunteer,
 )
-
-StandaloneDocs(app=app)
-
-""" Enable CORS """
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], # Allow requests from any origin, change in production
-    allow_credentials=True, # Allow cookies and authentication headers
-    allow_methods=["*"], # Allow all HTTP methods
-    allow_headers=["*"], # Allow all HTTP headers
-)
-
-""" routes from other modules"""
-app.include_router(user.router)
-app.include_router(donor.router)
-app.include_router(donations.router)
-app.include_router(recipient.router)
-app.include_router(volunteer.router)
-app.include_router(reviews.router)
-app.include_router(contact.router)
-app.include_router(donation_request.router)
-
-# --- Default admin creation logic (must be after app is defined) ---
-from app.models.user import UserCreate
-from app.database import user_collection
-from app.utils import get_password_hash
-import asyncio
-
-@app.on_event("startup")
-async def create_default_admin():
-    admin_username = "admin"
-    admin_email = "admin@example.com"
-    admin_password = "admin1"
-    admin_role = "admin"
-    # Check if admin user exists
-    existing = await user_collection.find_one({"username": admin_username})
-    if not existing:
-        user_doc = {
-            "username": admin_username,
-            "email": admin_email,
-            "password": get_password_hash(admin_password),
-            "role": admin_role
-        }
-        await user_collection.insert_one(user_doc)
-        print("Default admin user created: username='admin', password='admin1'")
-    else:
-        print("Default admin user already exists.")
-from fastapi import FastAPI
-from app.routes import donations, user, donor, recipient, reviews, volunteer, contact, donation_request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_standalone_docs import StandaloneDocs
+from app.routes import auth_routes, health, impact, matching_routes, platform
 
 
-app = FastAPI(
-    title="Food Donation API",
-    description="API for managing food donations, donors, recipients, community volunteers and reviews",
-    version="1.0.0",
-)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    # Validate settings eagerly
+    _ = settings.secret_key
+    await ensure_indexes()
+    # Ping Mongo
+    await client.admin.command("ping")
+    yield
 
-StandaloneDocs(app=app)
 
-""" Enable CORS """
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], # Allow requests from any origin, change in production
-    allow_credentials=True, # Allow cookies and authentication headers
-    allow_methods=["*"], # Allow all HTTP methods
-    allow_headers=["*"], # Allow all HTTP headers
-)
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title=settings.app_name,
+        description="Trusted resource-redistribution and impact-visibility API",
+        version="2.0.0",
+        lifespan=lifespan,
+        docs_url="/docs" if settings.enable_docs else None,
+        redoc_url="/redoc" if settings.enable_docs else None,
+    )
 
-""" routes from other modules"""
-app.include_router(user.router)
-app.include_router(donor.router)
-app.include_router(donations.router)
-app.include_router(recipient.router)
-app.include_router(volunteer.router)
-app.include_router(reviews.router)
-app.include_router(contact.router)
-app.include_router(donation_request.router)
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=settings.trusted_host_list + ["testserver"],
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", settings.csrf_header_name, "X-Request-ID"],
+    )
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        if settings.is_production:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        req_id = request.headers.get("X-Request-ID")
+        if req_id:
+            response.headers["X-Request-ID"] = req_id
+        return response
+
+    @app.exception_handler(Exception)
+    async def unhandled(request: Request, exc: Exception):
+        return JSONResponse(status_code=500, content={"detail": "Internal server error", "type": "server_error"})
+
+    prefix = settings.api_prefix
+
+    # Versioned API
+    for router in (
+        auth_routes.router,
+        health.router,
+        impact.router,
+        matching_routes.router,
+        platform.router,
+        user.router,
+        donor.router,
+        donations.router,
+        recipient.router,
+        volunteer.router,
+        reviews.router,
+        contact.router,
+        donation_request.router,
+    ):
+        app.include_router(router, prefix=prefix)
+
+    # Compatibility aliases (legacy unversioned paths used by existing frontend)
+    for router in (
+        auth_routes.compat_router,
+        user.router,
+        donor.router,
+        donations.router,
+        recipient.router,
+        volunteer.router,
+        reviews.router,
+        contact.router,
+        donation_request.router,
+        health.router,
+        impact.router,
+        matching_routes.router,
+    ):
+        app.include_router(router)
+
+    return app
+
+
+app = create_app()

@@ -1,9 +1,9 @@
 from pydantic import BaseModel, EmailStr
-from app.database import database
 from datetime import datetime
 
-# Initialize contact collection
-contact_collection = database.get_collection("contacts")
+from app.database import _CollectionProxy
+
+contact_collection = _CollectionProxy("contacts")
 
 
 class ContactBase(BaseModel):

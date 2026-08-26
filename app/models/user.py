@@ -63,7 +63,8 @@ async def create_user(user: UserCreate):
         'username': user.username,
         'email': user.email,
         'password': get_password_hash(user.password),
-        'role': user.role
+        'role': user.role,
+        'status': 'active',
     }
     new_user = await user_collection.insert_one(user_dict)
     created_user = await user_collection.find_one({"_id": new_user.inserted_id})

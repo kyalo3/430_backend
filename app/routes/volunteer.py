@@ -1,98 +1,80 @@
-
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List
+
+from app.core.rbac import require_roles
+from app.core.security import get_current_user
 from app.models.volunteer import (
-    Volunteer, VolunteerCreate, VolunteerUpdate,
-    create_volunteer, get_volunteer_by_id,
-    update_volunteer, get_volunteer_by_user_id, delete_volunteer
+    VolunteerCreate,
+    VolunteerUpdate,
+    create_volunteer,
+    delete_volunteer,
+    get_volunteer_by_id,
+    get_volunteer_by_user_id,
+    update_volunteer,
 )
-from app.routes.auth import get_current_user
-from app.models.user import User
 
-router = APIRouter()
+router = APIRouter(tags=["volunteers"])
 
-# Get current user's volunteer profile
-@router.get("/volunteers/", response_model=Volunteer)
-async def get_current_user_volunteer(current_user: User = Depends(get_current_user)):
+
+@router.get("/volunteers/")
+async def get_current_user_volunteer(current_user: dict = Depends(require_roles("volunteer", "admin"))):
     volunteer = await get_volunteer_by_user_id(current_user["id"])
     if not volunteer:
         raise HTTPException(status_code=404, detail="Volunteer profile not found")
     return volunteer
 
-@router.post("/volunteers/", response_model=Volunteer)
-async def create_volunteer_endpoint(volunteer: VolunteerCreate, current_user: User = Depends(get_current_user)):
-    """creates a new volunteer, allows a volunteer user to create a new
-    by probiding necessary volunteer data
-    Args:
-        volunteer: volunteer data to be created
-        current_user: current logged_in user, obtained through dependency
-        injection
-    Returns:
-        dict: a dictionary containing the created volunteer's details.
-    Raises:
-        HTTPException: if there is an error in volunteer creation
-    """
-    volunteer = await create_volunteer(volunteer, user_id=current_user["id"])
 
-    return {"id": volunteer.get("id"), "name": volunteer.get("name"), "user_id": current_user["id"]}
+@router.post("/volunteers/")
+async def create_volunteer_endpoint(
+    volunteer: VolunteerCreate,
+    current_user: dict = Depends(require_roles("volunteer", "admin")),
+):
+    return await create_volunteer(volunteer, user_id=current_user["id"])
 
-@router.get("/volunteers/{volunteer_id}", response_model=Volunteer)
-async def get_volunteer_endpoint(volunteer_id: str):
-    """gets a volunteer by id
-    Args:
-        volunteer_id: id of the volunteer to be fetched
-    Returns:
-        dict: a dictionary containing the volunteer's details.
-    Raises:
-        HTTPException: if the volunteer is not found
-    """
+
+@router.get("/volunteers/{volunteer_id}")
+async def get_volunteer_endpoint(
+    volunteer_id: str,
+    current_user: dict = Depends(get_current_user),
+):
     volunteer = await get_volunteer_by_id(volunteer_id)
-    if volunteer:
+    if not volunteer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Volunteer not found")
+    if current_user.get("role") == "admin":
         return volunteer
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Volunteer with id {volunteer_id} not found")
+    if volunteer.get("user_id") == current_user.get("id"):
+        return volunteer
+    # Limited public volunteer card
+    return {
+        "id": volunteer.get("id"),
+        "first_name": volunteer.get("first_name"),
+        "services_area": volunteer.get("approx_location") or volunteer.get("address", "")[:20] + "…",
+        "privacy": "contact_details_hidden",
+    }
 
-@router.get("/volunteers/", response_model=List[Volunteer])
-async def get_volunteers_endpoint(current_user: User = Depends(get_current_user)):
-    """gets all volunteers
-    Args:
-        current_user: current logged_in user, obtained through dependency
-        injection
-    Returns:
-        list: a list containing dictionaries of all volunteers
-    """
-    volunteers = await get_volunteer_by_user_id(current_user["id"])
-    return volunteers
 
-@router.put("/volunteers/{volunteer_id}", response_model=Volunteer)
-async def update_volunteer_endpoint(volunteer_id: str, volunteer: VolunteerUpdate):
-    """updates a volunteer by id
-    Args:
-        volunteer_id: id of the volunteer to be updated
-        volunteer: updated volunteer data
-    Returns:
-        dict: a dictionary containing the updated volunteer's details.
-    Raises:
-        HTTPException: if the volunteer is not found
-    """
-    updated_volunteer = await update_volunteer(volunteer_id, volunteer)
-    if updated_volunteer:
-        return updated_volunteer
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Volunteer with id {volunteer_id} not found")
+@router.put("/volunteers/{volunteer_id}")
+async def update_volunteer_endpoint(
+    volunteer_id: str,
+    volunteer: VolunteerUpdate,
+    current_user: dict = Depends(require_roles("volunteer", "admin")),
+):
+    existing = await get_volunteer_by_id(volunteer_id)
+    if not existing:
+        raise HTTPException(404, "Volunteer not found")
+    if current_user.get("role") != "admin" and existing.get("user_id") != current_user.get("id"):
+        raise HTTPException(403, "Forbidden")
+    updated = await update_volunteer(volunteer_id, volunteer)
+    if not updated:
+        raise HTTPException(404, "Volunteer not found")
+    return updated
 
-@router.delete("/volunteers/{volunteer_id}", response_model=dict)
-async def delete_volunteer_endpoint(volunteer_id: str):
-    """deletes a volunteer by id
-    Args:
-        volunteer_id: id of the volunteer to be deleted
-    Returns:
-        dict: a dictionary containing the deleted volunteer's details.
-    Raises:
-        HTTPException: if the volunteer is not found
-    """
-    deleted_volunteer = await delete_volunteer(volunteer_id)
-    if deleted_volunteer:
-        return {"message": f"Volunteer with id {volunteer_id} deleted successfully"}
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Volunteer with id {volunteer_id} not found")
 
-# Path: app/routes/recipient.py
+@router.delete("/volunteers/{volunteer_id}")
+async def delete_volunteer_endpoint(
+    volunteer_id: str,
+    current_user: dict = Depends(require_roles("admin")),
+):
+    deleted = await delete_volunteer(volunteer_id)
+    if not deleted:
+        raise HTTPException(404, "Volunteer not found")
+    return {"message": "Volunteer deleted successfully"}

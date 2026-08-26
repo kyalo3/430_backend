@@ -1,82 +1,34 @@
-from fastapi import APIRouter, HTTPException, status, Depends
-from typing import List
-from app.models.reviews import Review, ReviewCreate, create_review, get_reviews_by_user_id, get_all_reviews
-from app.models.user import get_user_by_username
+from fastapi import APIRouter, Depends, HTTPException
 
-router = APIRouter()
+from app.core.rbac import require_roles
+from app.core.security import get_current_user
+from app.models.reviews import ReviewCreate, create_review, get_all_reviews, get_reviews_by_user_id
 
-# GET all reviews endpoint for dashboard
-@router.get("/reviews/", response_model=List[Review])
-async def get_reviews():
-    """Get all reviews (for admin dashboard)"""
-    reviews = await get_all_reviews()
-    return reviews
-from fastapi import APIRouter, HTTPException, status
-from typing import List
-from app.models.reviews import Review, ReviewCreate, create_review, get_reviews_by_user_id
-from app.models.user import get_user_by_username
+router = APIRouter(tags=["reviews"])
 
-router = APIRouter()
 
-@router.post("/reviews/", response_model=Review)
-async def register_review(review: ReviewCreate):
-    """ this endpoint allows users to create a review
-    Request Body:
-        title: title of the review
-        content: content of the review
-        rating: rating of the review
-        userId: id of the user creating the review
-    """
-    user = await get_user_by_username(review.user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    review_id = await create_review(review)
+@router.get("/reviews/")
+async def get_reviews(current_user: dict = Depends(require_roles("admin"))):
+    return await get_all_reviews()
+
+
+@router.post("/reviews/")
+async def register_review(review: ReviewCreate, current_user: dict = Depends(get_current_user)):
+    forced = ReviewCreate(title=review.title, content=review.content, rating=review.rating, userId=str(current_user["id"]))
+    created = await create_review(forced)
+    if isinstance(created, dict):
+        return created
     return {
-        "id": review_id,
+        "id": created,
         "title": review.title,
         "content": review.content,
         "rating": review.rating,
-        "user_id": review.user_id
+        "user_id": str(current_user["id"]),
     }
 
-@router.get("/reviews/user/{user_id}", response_model=List[Review])
-async def get_user_reviews(user_id: str):
-    """ this endpoint allows users to fetch reviews by user id
-    Path Parameter:
-        user_id: id of the user
-    """
-    reviews = await get_reviews_by_user_id(user_id)
-    if not reviews:
-        raise HTTPException(status_code=404, detail="No reviews found for this user")
-    return reviews
 
-@router.put("/reviews/{review_id}", response_model=Review)
-async def update_review_endpoint(review_id: str, review: ReviewCreate):
-    """ this endpoint allows users to update a review
-    Path Parameter:
-        review_id: id of the review to be updated
-    Request Body:
-        title: updated title of the review
-        content: updated content of the review
-        rating: updated rating of the review
-        userId: id of the user updating the review
-    """
-    existing_review = await get_reviews_by_user_id(review.user_id)
-    if not existing_review:
-        raise HTTPException(status_code=404, detail="Review not found")
-
-    updated_review = await update_review(review_id, review)
-    if not updated_review:
-        raise HTTPException(status_code=500, detail="Failed to update review")
-    return updated_review
-
-@router.delete("/reviews/{review_id}", response_model=dict)
-async def delete_review_endpoint(review_id: str):
-    """ this endpoint allows users to delete a review
-    Path Parameter:
-        review_id: id of the review to be deleted
-    """
-    deleted_review = await delete_review(review_id)
-    if not deleted_review:
-        raise HTTPException(status_code=500, detail="Failed to delete review")
-    return {"message": "Review deleted successfully"}
+@router.get("/reviews/user/{user_id}")
+async def reviews_for_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "admin" and str(current_user.get("id")) != user_id:
+        raise HTTPException(403, "Forbidden")
+    return await get_reviews_by_user_id(user_id)
