@@ -54,10 +54,16 @@ def donation_public(doc: dict) -> dict:
         "status": doc.get("status", "draft"),
         "expiry_at": doc.get("expiry_at"),
         "collection_window": doc.get("collection_window"),
+        "window_start": doc.get("window_start"),
+        "window_end": doc.get("window_end"),
+        "load_class": doc.get("load_class") or "small",
+        "logistics_mode": doc.get("logistics_mode") or "either",
+        "capacity_cost": doc.get("capacity_cost") or 1,
         "approx_location": doc.get("approx_location"),
         "handling_notes": doc.get("handling_notes"),
         "match_reasons": doc.get("match_reasons", []),
         "volunteer_id": doc.get("volunteer_id") or "",
+        "logistics_org_id": doc.get("logistics_org_id") or "",
         "organisation_id": doc.get("organisation_id") or "",
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at"),
@@ -66,6 +72,9 @@ def donation_public(doc: dict) -> dict:
 
 
 async def create_donation_draft(payload: dict, donor_user_id: str) -> dict:
+    from app.services.logistics import normalize_listing_fields
+
+    payload = normalize_listing_fields(dict(payload))
     doc = {
         **payload,
         "donor_id": donor_user_id,

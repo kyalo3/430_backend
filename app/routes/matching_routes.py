@@ -15,6 +15,7 @@ class MatchQuery(BaseModel):
     quantity: int = 1
     urgency: str = "normal"
     approx_location: str | None = None
+    category: str | None = None
 
 
 @router.post("/matching/suggest")
@@ -24,6 +25,7 @@ async def suggest_matches(body: MatchQuery, current_user: dict = Depends(require
         "quantity": body.quantity,
         "urgency": body.urgency,
         "approx_location": body.approx_location,
+        "category": body.category,
     }
     if body.need_id:
         from bson.objectid import ObjectId
@@ -39,6 +41,7 @@ async def suggest_matches(body: MatchQuery, current_user: dict = Depends(require
             "quantity": req.get("quantity", 1),
             "urgency": req.get("urgency", "normal"),
             "approx_location": req.get("approx_location"),
+            "category": req.get("category") or "general",
         }
 
     available = [donation_public(d) async for d in donation_collection.find({"status": "available"}).limit(100)]
@@ -46,5 +49,6 @@ async def suggest_matches(body: MatchQuery, current_user: dict = Depends(require
     return {
         "engine": "rules_v1",
         "explanation": "Transparent category, quantity, location and urgency scoring. No opaque AI.",
+        "need": {"item": need.get("item"), "category": need.get("category"), "approx_location": need.get("approx_location")},
         "results": ranked,
     }

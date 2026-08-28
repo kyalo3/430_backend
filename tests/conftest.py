@@ -8,6 +8,7 @@ os.environ.setdefault("TRUSTED_HOSTS", "localhost,127.0.0.1,testserver")
 os.environ.setdefault("COOKIE_SECURE", "false")
 os.environ.setdefault("RATE_LIMIT_AUTH_PER_MINUTE", "1000")
 os.environ.setdefault("RATE_LIMIT_WRITE_PER_MINUTE", "1000")
+os.environ.setdefault("FEATURE_WORLD_BANK", "false")
 
 import pytest
 

@@ -70,11 +70,13 @@ async def register(request: Request):
     if settings.verification_required:
         from app.database import user_collection as users
         from bson.objectid import ObjectId
-        from app.services.verification import VerificationAdapter
+        from app.services.verification import VerificationAdapter, store_code
 
         await users.update_one({"_id": ObjectId(created["id"])}, {"$set": {"email_verified": False}})
         created["email_verified"] = False
-        VerificationAdapter().issue_code("email", body.email)
+        code = VerificationAdapter().issue_code("email", body.email)
+        if code:
+            await store_code(body.email, code, channel="email")
     await write_audit(
         actor_id=created.get("id"),
         actor_role=body.role,
@@ -82,7 +84,14 @@ async def register(request: Request):
         entity_type="user",
         entity_id=created.get("id"),
     )
-    return {"id": created.get("id"), "username": created.get("username"), "email": created.get("email"), "role": created.get("role")}
+    return {
+        "id": created.get("id"),
+        "username": created.get("username"),
+        "email": created.get("email"),
+        "role": created.get("role"),
+        "email_verified": created.get("email_verified", True),
+        "verification_required": settings.verification_required,
+    }
 
 
 async def _issue_session(response: Response, user: dict) -> dict:
@@ -192,3 +201,35 @@ async def auth_me(current_user: dict = Depends(get_current_user)):
         "status": current_user.get("status", "active"),
         "email_verified": current_user.get("email_verified", True),
     }
+
+
+class VerifyEmailIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=32)
+
+
+@router.post("/verify-email")
+@compat_router.post("/verify-email")
+async def verify_email(body: VerifyEmailIn):
+    from app.services.verification import consume_code
+
+    settings = get_settings()
+    if not settings.verification_required:
+        return {"verified": True, "note": "Verification is not required in this environment"}
+    ok = await consume_code(body.email, body.code, channel="email")
+    if not ok:
+        raise HTTPException(400, "Invalid or expired verification code")
+    user = await get_user_by_email(body.email)
+    if not user:
+        raise HTTPException(404, "User not found")
+    from bson.objectid import ObjectId
+
+    await user_collection.update_one({"_id": ObjectId(user["id"])}, {"$set": {"email_verified": True}})
+    await write_audit(
+        actor_id=str(user.get("id")),
+        actor_role=user.get("role"),
+        action="user.email_verified",
+        entity_type="user",
+        entity_id=str(user.get("id")),
+    )
+    return {"verified": True}

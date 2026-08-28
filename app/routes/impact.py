@@ -75,6 +75,57 @@ async def admin_impact(current_user: dict = Depends(require_roles("admin"))):
     return {"count": len(items), "items": items}
 
 
+@router.get("/impact/organisation/{org_id}")
+async def organisation_impact(org_id: str, current_user: dict = Depends(get_current_user)):
+    """Verified impact pack for an organisation — parties and admins only."""
+    from app.database import donation_collection
+    from app.services.organisations import assert_member, public_org
+    from app.database import organisation_collection
+    from bson.objectid import ObjectId
+
+    try:
+        org = await organisation_collection.find_one({"_id": ObjectId(org_id)})
+    except Exception:
+        org = None
+    if not org:
+        from fastapi import HTTPException
+
+        raise HTTPException(404, "Organisation not found")
+    if current_user.get("role") != "admin":
+        await assert_member(str(current_user["id"]), org_id)
+
+    donation_ids = [
+        str(d["_id"])
+        async for d in donation_collection.find({"organisation_id": org_id})
+    ]
+    items = []
+    total_qty = 0
+    async for r in impact_collection.find({"donation_id": {"$in": donation_ids}, "verified": True}):
+        qty = int(r.get("quantity") or 0)
+        total_qty += qty
+        items.append(
+            {
+                "donation_id": r.get("donation_id"),
+                "category": r.get("category"),
+                "quantity": qty,
+                "unit": r.get("unit"),
+                "completed_at": r.get("completed_at"),
+            }
+        )
+    return {
+        "organisation": public_org(org),
+        "verified_fulfilments": len(items),
+        "quantity_redistributed": total_qty,
+        "items": items,
+        "methodology": (
+            "Counts only impact_records created after recipient confirmation "
+            "(or admin-verified completion) for listings tagged to this organisation. "
+            "No meal/carbon conversion is applied."
+        ),
+        "empty": len(items) == 0,
+    }
+
+
 @router.get("/impact/operations")
 async def operations(current_user: dict = Depends(require_roles("admin"))):
     return await operations_snapshot()

@@ -9,10 +9,17 @@ def score_match(donation: dict, need: dict) -> tuple[float, list[str]]:
     reasons: list[str] = []
 
     d_cat = (donation.get("category") or donation.get("food_item") or "").lower()
-    n_item = (need.get("item") or need.get("category") or "").lower()
-    if d_cat and n_item and (d_cat in n_item or n_item in d_cat):
+    n_cat = (need.get("category") or "").lower()
+    n_item = (need.get("item") or "").lower()
+    if d_cat and n_cat and d_cat == n_cat:
+        score += 40
+        reasons.append(f"Same category ('{d_cat}')")
+    elif d_cat and n_item and (d_cat in n_item or n_item in d_cat):
         score += 40
         reasons.append(f"Category/item overlap ('{d_cat}' ≈ '{n_item}')")
+    elif d_cat and n_cat and (d_cat in n_cat or n_cat in d_cat):
+        score += 25
+        reasons.append(f"Related categories ('{d_cat}' ≈ '{n_cat}')")
 
     d_qty = int(donation.get("quantity") or 0)
     n_qty = int(need.get("quantity") or 1)

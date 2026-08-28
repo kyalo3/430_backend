@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     rate_limit_write_per_minute: int = Field(40, env="RATE_LIMIT_WRITE_PER_MINUTE")
     feature_webhooks: bool = Field(False, env="FEATURE_WEBHOOKS")
     feature_object_storage: bool = Field(False, env="FEATURE_OBJECT_STORAGE")
+    feature_world_bank: bool = Field(True, env="FEATURE_WORLD_BANK")
+    feature_email: bool = Field(False, env="FEATURE_EMAIL")
+    feature_sms: bool = Field(False, env="FEATURE_SMS")
+    smtp_host: str = Field("", env="SMTP_HOST")
+    smtp_port: int = Field(587, env="SMTP_PORT")
+    smtp_user: str = Field("", env="SMTP_USER")
+    smtp_password: str = Field("", env="SMTP_PASSWORD")
+    smtp_from: str = Field("", env="SMTP_FROM")
+    smtp_use_tls: bool = Field(True, env="SMTP_USE_TLS")
 
     class Config:
         env_file = ".env"

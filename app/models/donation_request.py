@@ -10,6 +10,7 @@ class DonationRequestCreate(BaseModel):
     quantity: int = 1
     urgency: str = "normal"
     approx_location: Optional[str] = None
+    category: Optional[str] = "general"
 
 
 class DonationRequestUpdate(BaseModel):
@@ -22,6 +23,7 @@ class DonationRequestInDB(DonationRequestCreate):
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     fulfilled_donation_id: Optional[str] = None
+    category: Optional[str] = "general"
 
 class DonationRequestResponse(DonationRequestInDB):
     pass

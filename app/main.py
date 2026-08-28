@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import asyncio
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +21,17 @@ from app.routes import (
     user,
     volunteer,
 )
-from app.routes import auth_routes, fulfilment, health, impact, matching_routes, notifications, organisations, integrations, platform
+from app.routes import auth_routes, fulfilment, health, impact, matching_routes, notifications, organisations, integrations, platform, reference
+
+
+async def _warmup_reference() -> None:
+    try:
+        from app.services.opendata import sync_world_bank
+
+        await sync_world_bank(force=False)
+    except Exception:
+        # Bundled counties/categories still work if World Bank is unreachable.
+        pass
 
 
 @asynccontextmanager
@@ -31,6 +42,8 @@ async def lifespan(app: FastAPI):
     await ensure_indexes()
     # Ping Mongo
     await client.admin.command("ping")
+    if settings.feature_world_bank:
+        app.state.reference_sync = asyncio.create_task(_warmup_reference())
     yield
 
 
@@ -96,6 +109,7 @@ def create_app() -> FastAPI:
         notifications.router,
         organisations.router,
         integrations.router,
+        reference.router,
     ):
         app.include_router(router, prefix=prefix)
 
@@ -118,6 +132,7 @@ def create_app() -> FastAPI:
         notifications.router,
         organisations.router,
         integrations.router,
+        reference.router,
     ):
         app.include_router(router)
 

@@ -67,6 +67,8 @@ notification_collection = _CollectionProxy("notifications")
 refresh_token_collection = _CollectionProxy("refresh_tokens")
 organisation_collection = _CollectionProxy("organisations")
 organisation_member_collection = _CollectionProxy("organisation_members")
+reference_snapshot_collection = _CollectionProxy("reference_snapshots")
+verification_code_collection = _CollectionProxy("verification_codes")
 
 
 class _DbProxy:
@@ -125,3 +127,5 @@ async def ensure_indexes() -> None:
     await organisation_collection.create_index("slug", unique=True)
     await organisation_member_collection.create_index([("org_id", 1), ("user_id", 1)], unique=True)
     await donation_collection.create_index("organisation_id")
+    await reference_snapshot_collection.create_index("key", unique=True)
+    await verification_code_collection.create_index([("destination", 1), ("channel", 1)], unique=True)

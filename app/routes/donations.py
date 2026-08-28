@@ -33,6 +33,10 @@ class DonationCreateIn(BaseModel):
     price: float = 0
     expiry_at: Optional[str] = None
     collection_window: Optional[str] = None
+    window_start: Optional[str] = None
+    window_end: Optional[str] = None
+    load_class: str = "small"
+    logistics_mode: Optional[str] = None
     approx_location: Optional[str] = None
     handling_notes: Optional[str] = None
     organisation_id: Optional[str] = None

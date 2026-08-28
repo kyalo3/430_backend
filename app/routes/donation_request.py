@@ -36,6 +36,7 @@ def _serialize_request(request: dict) -> dict:
         "quantity": request.get("quantity", 1),
         "urgency": request.get("urgency", "normal"),
         "approx_location": request.get("approx_location"),
+        "category": request.get("category") or "general",
     }
 
 
